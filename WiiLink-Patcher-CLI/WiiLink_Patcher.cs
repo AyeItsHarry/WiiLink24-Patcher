@@ -40,6 +40,10 @@ class WiiLink_Patcher
     static bool inCompatabilityMode = false;
     static Dictionary<string, string> patchingProgress_custom = [];
 
+    // Extra Downloads variables
+    static List<string> extraChannels_selection = [];
+
+
     // Misc. variables
     static string task = "";
     static string curCmd = "";
@@ -2661,6 +2665,390 @@ class WiiLink_Patcher
         }
     }
 
+    // Extras Download (Part 1 - Select extra channels)
+    static void ExtrasDownload_Setup()
+    {
+        task = "Extras Download (Part 1 - Select extra channels)";
+
+        // Define a dictionary to map the extra channel names to easy-to-read format
+        var channelMap = new Dictionary<string, string>()
+        {
+            { "Wii Speak Channel [bold](USA)[/]", "ws_us" },
+            { "Wii Speak Channel [bold](Europe)[/]", "ws_eu" },
+            { "Wii Speak Channel [bold](Japan)[/]", "ws_jp" },
+            { "Today and Tomorrow Channel [bold](Europe)[/]", "tatc_eu" },
+            { "Today and Tomorrow Channel [bold](Japan)[/]", "tatc_jp" }
+        };
+
+        // Initialize selection list to "Not selected" using LINQ
+        if (extraChannels_selection.Count == 0) // Only do this
+            extraChannels_selection = channelMap.Values.Select(_ => "[grey]Not selected[/]").ToList();
+
+        // Page setup
+        const int ITEMS_PER_PAGE = 9;
+        int currentPage = 1;
+
+        while (true)
+        {
+            PrintHeader();
+
+            // Print title
+            string extrasDownload = patcherLang == PatcherLanguage.en
+                ? "Extras Download"
+                : $"{localizedText?["ExtrasDownload"]?["Header"]}";
+            AnsiConsole.MarkupLine($"[bold springgreen2_1]{extrasDownload}[/]\n");
+
+            // Print step number and title
+            string stepNum = patcherLang == PatcherLanguage.en
+                ? "Step 1"
+                : $"{localizedText?["ExtrasDownload"]?["extraChannels_Setup"]?["stepNum"]}";
+            string stepTitle = patcherLang == PatcherLanguage.en
+                ? "Select Extra channel(s) to install"
+                : $"{localizedText?["ExtrasDownload"]?["extraChannels_Setup"]?["stepTitle"]}";
+            AnsiConsole.MarkupLine($"[bold]{stepNum}:[/] {stepTitle}\n");
+
+            // Display Extra channel selection menu
+            string selectExtraChns = patcherLang == PatcherLanguage.en
+                ? "Select Extra channel(s) to install:"
+                : $"{localizedText?["ExtrasDownload"]?["extraChannels_Setup"]?["selectExtraChns"]}";
+            AnsiConsole.MarkupLine($"[bold]{selectExtraChns}[/]\n");
+            var grid = new Grid();
+
+            // Add channels to grid
+            grid.AddColumn();
+            grid.AddColumn();
+
+            // Calculate the start and end indices for the items on the current page
+            (int start, int end) = GetPageIndices(currentPage, channelMap.Count, ITEMS_PER_PAGE);
+
+            // Display list of channels
+            for (int i = start; i < end; i++)
+            {
+                KeyValuePair<string, string> channel = channelMap.ElementAt(i);
+                grid.AddRow($"[bold][[{i - start + 1}]][/] {channel.Key}", extraChannels_selection[i]);
+
+                // Add blank rows if there are less than nine pages
+                if (i == end - 1 && end - start < 9)
+                {
+                    int numBlankRows = 9 - (end - start);
+                    for (int j = 0; j < numBlankRows; j++)
+                    {
+                        grid.AddRow("", "");
+                    }
+                }
+            }
+
+            AnsiConsole.Write(grid);
+            Console.WriteLine();
+
+            // Page navigation
+            double totalPages = Math.Ceiling((double)channelMap.Count / ITEMS_PER_PAGE);
+
+            // Only display page navigation and number if there's more than one page
+            if (totalPages > 1)
+            {
+                // If the current page is greater than 1, display a bold white '<<' for previous page navigation
+                // Otherwise, display two lines '||'
+                AnsiConsole.Markup(currentPage > 1 ? "[bold white]<<[/] " : "   ");
+
+                // Print page number
+                string pageNum = patcherLang == PatcherLanguage.en
+                    ? $"Page {currentPage} of {totalPages}"
+                    : $"{localizedText?["ExtrasDownload"]?["pageNum"]}"
+                        .Replace("{currentPage}", currentPage.ToString())
+                        .Replace("{totalPages}", totalPages.ToString());
+                AnsiConsole.Markup($"[bold]{pageNum}[/] ");
+
+                // If the current page is less than total pages, display a bold white '>?' for next page navigation
+                // Otherwise, display a space '  '
+                AnsiConsole.Markup(currentPage < totalPages ? "[bold white]>>[/]" : "  ");
+
+                // Print instructions
+                //AnsiConsole.MarkupLine(" [grey](Press [bold white]<-[/] or [bold white]->[/] to navigate pages)[/]\n");
+                string pageInstructions = patcherLang == PatcherLanguage.en
+                    ? "(Press [bold white]<-[/] or [bold white]->[/] to navigate pages)"
+                    : $"{localizedText?["ExtrasDownload"]?["pageInstructions"]}";
+                AnsiConsole.MarkupLine($" [grey]{pageInstructions}[/]\n");
+            }
+
+            // Print regular instructions
+            string regInstructions = patcherLang == PatcherLanguage.en
+                ? "< Press [bold white]a number[/] to select/deselect a channel, [bold white]ENTER[/] to continue, [bold white]Backspace[/] to go back, [bold white]ESC[/] to go back to exit setup >"
+                : $"{localizedText?["ExtrasDownload"]?["regInstructions"]}";
+            AnsiConsole.MarkupLine($"[grey]{regInstructions}[/]\n");
+
+            // Generate the choice string dynamically
+            string choices = string.Join("", Enumerable.Range(1, ITEMS_PER_PAGE).Select(n => n.ToString()));
+            int choice = UserChoose(choices);
+
+            // Handle page navigation
+            if (choice == -99 && currentPage > 1) // Left arrow
+            {
+                currentPage--;
+            }
+            else if (choice == 99 && currentPage < totalPages) // Right arrow
+            {
+                currentPage++;
+            }
+
+            // Not selected and Selected strings
+            string notSelected = patcherLang == PatcherLanguage.en
+                ? "Not selected"
+                : $"{localizedText?["ExtrasDownload"]?["notSelected"]}";
+            string selectedText = patcherLang == PatcherLanguage.en
+                ? "Selected"
+                : $"{localizedText?["ExtrasDownload"]?["selected"]}";
+
+            // Handle user input
+            switch (choice)
+            {
+                case -1: // Escape
+                case -2: // Backspace
+                    // Clear selection list
+                    wiiLinkChannels_selection.Clear();
+                    wiiConnect24Channels_selection.Clear();
+                    extraChannels_selection.Clear();
+                    MainMenu();
+                    break;
+                case 0: // Enter
+                    // Save selected channels to global variable if any are selected, divide them into WiiLink and WC24 channels
+                    foreach (string channel in channelMap.Values.Where(extraChannels_selection.Contains))
+                    {
+                        extraChannels_selection.Add(channel);
+                    }
+                    // If selection is empty, display error message
+                    if (!channelMap.Values.Any(extraChannels_selection.Contains))
+                    {
+                        //AnsiConsole.MarkupLine("\n[bold red]ERROR:[/] You must select at least one channel to proceed!");
+                        string mustSelectOneChannel = patcherLang == PatcherLanguage.en
+                            ? "[bold red]ERROR:[/] You must select at least one channel to proceed!"
+                            : $"{localizedText?["ExtrasDownload"]?["mustSelectOneChannel"]}";
+                        AnsiConsole.MarkupLine($"\n{mustSelectOneChannel}");
+                        Thread.Sleep(3000);
+                        continue;
+                    }
+
+                    // Go to next step
+                    ExtrasDownload_SystemChannelRestorer_Setup();
+                    break;
+                default:
+                    if (choice >= 1 && choice <= Math.Min(ITEMS_PER_PAGE, channelMap.Count - start))
+                    {
+                        int index = start + choice - 1;
+                        string channelName = channelMap.Values.ElementAt(index);
+                        if (extraChannels_selection.Contains(channelName))
+                        {
+                            extraChannels_selection = extraChannels_selection.Where(val => val != channelName).ToList();
+                            extraChannels_selection[index] = $"[grey]{notSelected}[/]";
+                        }
+                        else
+                        {
+                            extraChannels_selection = extraChannels_selection.Append(channelName).ToList();
+                            extraChannels_selection[index] = $"[bold springgreen2_1]{selectedText}[/]";
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+
+    // Extras Download (Part 2 - system-channel-restorer)
+    static void ExtrasDownload_SystemChannelRestorer_Setup()
+    {
+        task = "Extras Download (Part 2 - system-channel-restorer)";
+        while (true)
+        {
+            PrintHeader();
+
+            // Print title
+            string extrasDownload = patcherLang == PatcherLanguage.en
+                ? "Extras Download"
+                : $"{localizedText?["ExtrasDownload"]?["Header"]}";
+            AnsiConsole.MarkupLine($"[bold springgreen2_1]{extrasDownload}[/]\n");
+
+            // Print step number and title
+            string stepNum = patcherLang == PatcherLanguage.en
+                ? "Step 2"
+                : $"{localizedText?["ExtrasDownload"]?["SystemChannelRestorer_Setup"]?["stepNum"]}";
+            string stepTitle = patcherLang == PatcherLanguage.en
+                ? "system-channel-restorer"
+                : $"{localizedText?["ExtrasDownload"]?["SystemChannelRestorer_Setup"]?["stepTitle"]}";
+            AnsiConsole.MarkupLine($"[bold]{stepNum}:[/] {stepTitle}\n");
+
+            // Display console platform selection menu
+            string systemChannelRestorer = patcherLang == PatcherLanguage.en
+                ? "Would you like to download system-channel-restorer?"
+                : $"{localizedText?["ExtrasDownload"]?["SystemChannelRestorer_Setup"]?["selectSystemChannelRestorer"]}";
+            AnsiConsole.MarkupLine($"[bold]{systemChannelRestorer}[/]\n");
+
+            // Display console platform selection menu
+            string systemChannelRestorerInfo = patcherLang == PatcherLanguage.en
+                ? "[grey]system-channel-restorer allows you to download more channels, such as the[/] [bold]Internet Channel[/] [grey]and[/] [bold]Photo Channel 1.1[/][grey].[/]"
+                : $"{localizedText?["ExtrasDownload"]?["SystemChannelRestorer_Setup"]?["systemChannelRestorerInfo"]}";
+            AnsiConsole.MarkupLine($"{systemChannelRestorerInfo}\n");
+
+            // Print Console Platform options
+            string yes = patcherLang == PatcherLanguage.en
+                ? "[bold]Yes[/]"
+                : $"{localizedText?["ExtrasDownload"]?["SystemChannelRestorer_Setup"]?["yes"]}";
+            string no = patcherLang == PatcherLanguage.en
+                ? "[bold]No[/]"
+                : $"{localizedText?["ExtrasDownload"]?["SystemChannelRestorer_Setup"]?["no"]}";
+            AnsiConsole.MarkupLine($"[bold]1.[/] {yes}");
+            AnsiConsole.MarkupLine($"[bold]2.[/] {no}");
+
+            // Print instructions
+            string platformInstructions = patcherLang == PatcherLanguage.en
+                ? "< Press [bold white]a number[/] to make your selection, [bold white]Backspace[/] to go back, [bold white]ESC[/] to go back to exit setup >"
+                : $"{localizedText?["ExtrasDownload"]?["SystemChannelRestorer_Setup"]?["selectionInstructions"]}";
+            AnsiConsole.MarkupLine($"[grey]{platformInstructions}[/]\n");
+
+            int choice = UserChoose("12");
+
+            // Use a switch statement to handle user's selection
+            switch (choice)
+            {
+                case -1: // Escape
+                    extraChannels_selection.Clear();
+                    MainMenu();
+                    break;
+                case -2: // Backspace
+                    ExtrasDownload_Setup();
+                    break;
+                case 1:
+                    ExtrasDownload_SummaryScreen(systemChannelRestorer: true);
+                    break;
+                case 2:
+                    ExtrasDownload_SummaryScreen(systemChannelRestorer: false);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // Extra Downloads (Part 3 - Show summary of selected channels to be installed)
+    static void ExtrasDownload_SummaryScreen(bool systemChannelRestorer = false)
+    {
+        task = "Extra Downloads (Part 3 - Show summary of selected channels to be installed)";
+        // Convert channel names to proper names
+        var channelMap = new Dictionary<string, string>()
+        {
+            { "ws_us", "Wii Speak Channel [bold](USA)[/]" },
+            { "ws_eu", "Wii Speak Channel [bold](Europe)[/]" },
+            { "ws_jp", "Wii Speak Channel [bold](Japan)[/]" },
+            { "tatc_eu", "Today and Tomorrow Channel [bold](Europe)[/]" },
+            { "tatc_jp", "Today and Tomorrow Channel [bold](Japan)[/]" }
+        };
+
+        var selectedChannels = new List<string>();
+        if (extraChannels_selection.Count > 0)
+        {
+            foreach (string channel in extraChannels_selection)
+            {
+                if (channelMap.TryGetValue(channel, out string? modifiedChannel))
+                    selectedChannels.Add(modifiedChannel);
+            }
+        }
+        else
+        {
+            selectedChannels.Add("● [grey]N/A[/]");
+        }
+
+        if (!selectedChannels.Any())
+            selectedChannels.Add("● [grey]N/A[/]");
+
+        while (true)
+        {
+            PrintHeader();
+
+            // Print title
+            string extrasDownload = patcherLang == PatcherLanguage.en
+                ? "Extras Download"
+                : $"{localizedText?["ExtrasDownload"]?["Header"]}";
+            string summaryHeader = patcherLang == PatcherLanguage.en
+                ? "Summary of selected channels to be installed:"
+                : $"{localizedText?["ExtrasDownload"]?["summaryScreen"]?["summaryHeader"]}";
+            AnsiConsole.MarkupLine($"[bold springgreen2_1]{extrasDownload}[/]\n");
+            AnsiConsole.MarkupLine($"[bold]{summaryHeader}[/]\n");
+
+            // Display summary of selected channels in two columns using a grid
+            var grid = new Grid();
+            grid.AddColumn();
+            grid.AddColumn();
+
+            // Grid header text
+            string extraChannels = patcherLang == PatcherLanguage.en
+                ? "Extra Channels:"
+                : $"{localizedText?["ExtrasDownload"]?["summaryScreen"]?["extraChannels"]}";
+            string SystemChannelRestorer = patcherLang == PatcherLanguage.en
+                ? "system-channel-restorer:"
+                : $"{localizedText?["ExtrasDownload"]?["summaryScreen"]?["systemChannelRestorer"]}";
+
+            grid.AddRow($"[bold deepskyblue1]{extraChannels}[/]", $"[bold springgreen2_1]{SystemChannelRestorer}[/]");
+
+            if (systemChannelRestorer == true)
+                grid.AddRow(string.Join("\n", selectedChannels), "\n Yes");
+            else
+                grid.AddRow(string.Join("\n", selectedChannels), "\n No");
+
+            AnsiConsole.Write(grid);
+
+            // Print instructions
+            string prompt = patcherLang == PatcherLanguage.en
+                ? "Are you sure you want to install these selected channels?"
+                : $"{localizedText?["ExtrasDownload"]?["summaryScreen"]?["confirmation"]?["prompt"]}";
+
+            // User confirmation strings
+            string yes = patcherLang == PatcherLanguage.en
+                ? "Yes"
+                : $"{localizedText?["ExtrasDownload"]?["summaryScreen"]?["confirmation"]?["yes"]}";
+            string noStartOver = patcherLang == PatcherLanguage.en
+                ? "No, start over"
+                : $"{localizedText?["ExtrasDownload"]?["summaryScreen"]?["confirmation"]?["noStartOver"]}";
+            string noGoBackToMainMenu = patcherLang == PatcherLanguage.en
+                ? "No, go back to Main Menu"
+                : $"{localizedText?["ExtrasDownload"]?["summaryScreen"]?["confirmation"]?["noGoBackToMainMenu"]}";
+
+            AnsiConsole.MarkupLine($"\n[bold]{prompt}[/]\n");
+
+            AnsiConsole.MarkupLine($"1. {yes}");
+            AnsiConsole.MarkupLine($"2. {noStartOver}\n");
+
+            AnsiConsole.MarkupLine($"3. {noGoBackToMainMenu}\n");
+
+            var choice = UserChoose("123");
+
+            // Handle user confirmation choice
+            switch (choice)
+            {
+                case 1: // Yes
+                    if (platformType_custom != Platform.Dolphin)
+                    {
+                        SDSetup(isCustomSetup: true);
+                        break;
+                    }
+                    else
+                    {
+                        sdcard = null;
+                        WADFolderCheck(true);
+                        break;
+                    }
+                case 2: // No, start over
+                    extraChannels_selection.Clear();
+                    ExtrasDownload_Setup();
+                    break;
+                case 3: // No, go back to main menu
+                    extraChannels_selection.Clear();
+                    MainMenu();
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+
     // Download respective patches for selected core and WiiConnect24 channels (and SPD if English is selected for WiiLink channels)
     static void DownloadCustomPatches(List<string> channelSelection)
     {
@@ -3774,6 +4162,11 @@ class WiiLink_Patcher
                 ? "Start Custom Install Setup [bold](Advanced)[/]"
                 : $"{localizedText?["MainMenu"]?["startCustomSetup"]}";
 
+            // Extras Download text
+            string startExtrasSetup = patcherLang == PatcherLanguage.en
+                ? "Download Extra Channels [grey bold](Optional)[/]"
+                : $"{localizedText?["MainMenu"]?["startExtrasSetup"]}";
+
             // Settings text
             string settings = patcherLang == PatcherLanguage.en
                 ? "Settings"
@@ -3799,13 +4192,14 @@ class WiiLink_Patcher
 
             AnsiConsole.MarkupLine($"1. {startExpressSetup}");
             AnsiConsole.MarkupLine($"2. {startCustomSetup}");
-            AnsiConsole.MarkupLine($"3. {settings}\n");
+            AnsiConsole.MarkupLine($"3. {startExtrasSetup}");
+            AnsiConsole.MarkupLine($"4. {settings}\n");
 
-            AnsiConsole.MarkupLine($"4. {visitGitHub}");
+            AnsiConsole.MarkupLine($"5. {visitGitHub}");
 
-            AnsiConsole.MarkupLine($"5. {visitWiiLink}\n");
+            AnsiConsole.MarkupLine($"6. {visitWiiLink}\n");
 
-            AnsiConsole.MarkupLine($"6. {exitPatcher}\n");
+            AnsiConsole.MarkupLine($"7. {exitPatcher}\n");
 
             // Detect SD Card / USB Drive text
             string SDDetectedOrNot = sdcard != null
@@ -3830,7 +4224,7 @@ class WiiLink_Patcher
             AnsiConsole.MarkupLine(manualDetection);
 
             // User chooses an option
-            int choice = UserChoose("123456RrMm");
+            int choice = UserChoose("1234567RrMm");
             switch (choice)
             {
                 case 1: // Start Express Install
@@ -3839,25 +4233,28 @@ class WiiLink_Patcher
                 case 2: // Start Custom Install
                     CustomInstall_WiiLinkChannels_Setup();
                     break;
-                case 3: // Settings                
+                case 3: // Start Extras Install
+                    ExtrasDownload_Setup();
+                    break;
+                case 4: // Settings                
                     SettingsMenu();
                     break;
-                case 4: // Visit GitHub
+                case 5: // Visit GitHub
                     VisitWebsite("https://github.com/WiiLink24/WiiLink24-Patcher");
                     break;
-                case 5: // Visit WiiLink website
+                case 6: // Visit WiiLink website
                     VisitWebsite("https://wiilink24.com");
                     break;
-                case 6: // Clear console and Exit app
+                case 7: // Clear console and Exit app
                     Console.Clear();
                     ExitApp();
                     break;
-                case 7: // Automatically detect SD Card path (R/r)
-                case 8:
+                case 8: // Automatically detect SD Card path (R/r)
+                case 9:
                     sdcard = DetectRemovableDrive;
                     break;
-                case 9: // Manually select SD Card path (M/m)
-                case 10:
+                case 10: // Manually select SD Card path (M/m)
+                case 11:
                     SDCardSelect();
                     break;
                 default:
